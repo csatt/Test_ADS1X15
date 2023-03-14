@@ -70,13 +70,13 @@ float lsb_nanovolts[6];
 #if ADS1015_MODE
   Adafruit_ADS1015 ads1x15(ADS1X15_ADDR);
   int multiplier = 16;
-  int pos_sat_val = (1 << 11) - 1; //  2047
-  int neg_sat_val = -(1 << 11);    // -2048
+  int16_t pos_sat_val = 2047;  //  (1 << 11) - 1
+  int16_t neg_sat_val = -2048; // -(1 << 11)
 #else
   Adafruit_ADS1115 ads1x15(ADS1X15_ADDR);
   int multiplier = 1;
-  int16_t pos_sat_val = (1 << 15) - 1; //  32767
-  int16_t neg_sat_val = -(1 << 15);    // -32768
+  int16_t pos_sat_val = 32767;  // (1 << 15) - 1
+  int16_t neg_sat_val = -32768; //-(1 << 15)
 #endif
 
 void setup()
@@ -125,51 +125,67 @@ void loop()
                                GAIN_SIXTEEN};    // PGA = 5: +/- 0.256 V
   char str[100];
 
-  // Register write/read test
-  for (int ii = 0; ii < 64; ii++) {
-    write_register(ADS1X15_ADDR,
-                   ADS1015_REG_POINTER_HITHRESH,
-                   ads1X15_write_val);
-    ads1X15_read_val = read_register(ADS1X15_ADDR,
-                                     ADS1015_REG_POINTER_HITHRESH);
-    if (ads1X15_read_val == ads1X15_write_val) {
-      Serial.print(F("."));
-      pass_count++;
-    } else {
-      sprintf(str, "\nERROR: wrote %u but read %u",
-              ads1X15_write_val, ads1X15_read_val);
-      Serial.println(str);
-      fail_count++;
+  // ADS1115 present test
+  ads1X15_read_val = read_register(ADS1X15_ADDR,
+                                   ADS1015_REG_POINTER_LOWTHRESH);
+  if (ads1X15_read_val == -1) {
+    // Value of -1 indicates no ADS1x15
+    Serial.print("\nERROR: ** No ADS1x15 found **");
+    Serial.print("\n       Check the VDD, GND, SCL, and SDA connections ");
+    Serial.print("from the Arduino to the ADS1x15 module. ");
+    if (ADS1X15_ADDR == 0x48) {
+      Serial.print("\n       Check that the ADDR pin on the ADS1x15 module ");
+      Serial.print("is not connected to anything ");
+      Serial.print("\n       (it should be connected ");
+      Serial.print("to GND through a pull-down resistor on the module.)");
     }
-    ads1X15_write_val++;
-  }
-  sprintf(str, "  %lu reg tests passed, %lu reg tests failed",
-          pass_count, fail_count);
-  Serial.println(str);
-  Serial.flush();
+  } else {
+    // Register write/read test
+    for (int ii = 0; ii < 64; ii++) {
+      write_register(ADS1X15_ADDR,
+                     ADS1015_REG_POINTER_HITHRESH,
+                     ads1X15_write_val);
+      ads1X15_read_val = read_register(ADS1X15_ADDR,
+                                       ADS1015_REG_POINTER_HITHRESH);
+      if (ads1X15_read_val == ads1X15_write_val) {
+        Serial.print(F("."));
+        pass_count++;
+      } else {
+        sprintf(str, "\nERROR: wrote %u but read %u",
+                ads1X15_write_val, ads1X15_read_val);
+        Serial.println(str);
+        fail_count++;
+      }
+      ads1X15_write_val++;
+    }
+    sprintf(str, "  %lu reg tests passed, %lu reg tests failed",
+            pass_count, fail_count);
+    Serial.println(str);
+    Serial.flush();
 
-  // Voltage measurement test
-  for (int pga = 0; pga < 6; pga++) {
-    ads1x15.setGain(ads1x15_gains[pga]);
-    sprintf(str, "PGA=%d  ", pga);
-    Serial.print(str);
-    for (int ch = 0; ch < 4; ch++) {
-      ads1X15_read_val = ads1x15.readADC_SingleEnded(ch);
-      sprintf(str, "CH%d: ", ch);
+    // Voltage measurement test
+    for (int pga = 0; pga < 6; pga++) {
+      ads1x15.setGain(ads1x15_gains[pga]);
+      sprintf(str, "PGA=%d  ", pga);
       Serial.print(str);
+      for (int ch = 0; ch < 4; ch++) {
+        ads1X15_read_val = ads1x15.readADC_SingleEnded(ch);
+        sprintf(str, "CH%d: ", ch);
+        Serial.print(str);
+        convert_to_microvolts(str, pga, ads1X15_read_val);
+        Serial.print(str);
+        Serial.print(F("  "));
+      }
+      ads1X15_read_val = ads1x15.readADC_Differential_0_1();
+      Serial.print(F("CH0/1: "));
       convert_to_microvolts(str, pga, ads1X15_read_val);
       Serial.print(str);
       Serial.print(F("  "));
+      ads1X15_read_val = ads1x15.readADC_Differential_2_3();
+      Serial.print(F("CH2/3: "));
+      convert_to_microvolts(str, pga, ads1X15_read_val);
+      Serial.println(str);
     }
-    ads1X15_read_val = ads1x15.readADC_Differential_0_1();
-    Serial.print(F("CH0/1: "));
-    convert_to_microvolts(str, pga, ads1X15_read_val);
-    Serial.print(str);
-    Serial.print(F("  "));
-    ads1X15_read_val = ads1x15.readADC_Differential_2_3();
-    Serial.print(F("CH2/3: "));
-    convert_to_microvolts(str, pga, ads1X15_read_val);
-    Serial.println(str);
   }
 }
 
